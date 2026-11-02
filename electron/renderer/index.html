@@ -146,8 +146,12 @@
           <h2>浏览器内核</h2>
           <div id="browser-status" class="kv">检测中…</div>
           <div id="browser-progress" class="progress hidden"><div class="bar"></div></div>
+          <label>内核版本</label>
+          <div class="row"><select id="browser-version" class="input"></select></div>
+          <div class="row hidden" id="browser-custom-row"><input id="browser-custom-version" class="input mono" placeholder="例如 156.0.8078.4"></div>
           <div class="row"><button id="btn-download-browser" class="btn primary">下载 Chromium</button></div>
-          <p class="hint">按本版本锁定的 Playwright 版本下载匹配内核，保存在 CIKE 数据目录中；更新内核后重新打开环境生效。</p>
+          <div id="browser-runcheck-hint" class="sub hidden" style="margin-top:8px">内核文件版本已确认，但直接运行失败，常见原因是缺少 Visual C++ 运行库或被杀毒拦截；打开环境时若仍失败，请先安装 Microsoft Visual C++ Redistributable 并检查杀毒拦截。</div>
+          <p class="hint">推荐用 Playwright 锁定版本；其他版本可能与 Playwright 1.64 不完全兼容。已下载过的同版本内核会直接复用，不用重新下载。旧版本文件夹保留在数据目录 browsers 下，可手动删除；更新内核后重新打开环境生效。</p>
         </div>
         <div class="card">
           <h2>网络</h2>

@@ -10,7 +10,7 @@ const path = require('path');
 const fs = require('fs');
 
 const { startBackend, DATA_DIR } = require('../src/server');
-const { chromiumStatus, downloadChromium, executableMarker } = require('./chromium');
+const { chromiumStatus, downloadChromium, listChromiumVersions, executableMarker } = require('./chromium');
 
 let backend = null;
 let mainWindow = null;
@@ -193,13 +193,30 @@ handle('chromium-status', async () => {
   return chromiumStatus(DATA_DIR);
 });
 
+handle('chromium-versions', async () => {
+  return listChromiumVersions();
+});
+
 handle('chromium-download', async (event) => {
   if (backend.browsers.listOpen().length || backend.browsers.opening.size) throw new Error('请先关闭所有环境再更新内核');
   const send = (p) => event.sender.send('chromium-download-progress', p);
   try {
-    const exe = await downloadChromium(DATA_DIR, send);
-    process.env.LFB_CHROMIUM_EXECUTABLE = exe;
-    return { ok: true, executable: exe };
+    const result = await downloadChromium(DATA_DIR, send);
+    process.env.LFB_CHROMIUM_EXECUTABLE = result.executable;
+    return { ok: true, executable: result.executable, runCheckFailed: result.runCheckFailed };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+handle('chromium-download-version', async (event, version) => {
+  if (backend.browsers.listOpen().length || backend.browsers.opening.size) throw new Error('请先关闭所有环境再更新内核');
+  if (typeof version !== 'string' || !/^\d+\.\d+\.\d+\.\d+$/.test(version)) throw new Error('内核版本号格式不正确，例如 156.0.8078.4');
+  const send = (p) => event.sender.send('chromium-download-progress', p);
+  try {
+    const result = await downloadChromium(DATA_DIR, version, send);
+    process.env.LFB_CHROMIUM_EXECUTABLE = result.executable;
+    return { ok: true, executable: result.executable, runCheckFailed: result.runCheckFailed };
   } catch (err) {
     return { ok: false, error: err.message };
   }

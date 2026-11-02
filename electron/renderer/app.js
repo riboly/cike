@@ -761,20 +761,79 @@ async function loadSettings() {
   await refreshChromiumStatus();
 }
 
+function selectedChromiumVersion() {
+  const select = document.getElementById('browser-version');
+  if (select.value === 'custom') return document.getElementById('browser-custom-version').value.trim();
+  return select.value;
+}
+
+function updateDownloadButton() {
+  const btn = document.getElementById('btn-download-browser');
+  const hint = document.getElementById('browser-runcheck-hint');
+  if (!state.chromium) return;
+  const selected = selectedChromiumVersion();
+  btn.disabled = false;
+  if (state.chromium.installed) {
+    btn.textContent = selected && selected !== state.chromium.version ? `下载 ${selected}` : '重新下载 Chromium';
+  } else {
+    btn.textContent = selected ? `下载 Chromium ${selected}` : '下载 Chromium';
+  }
+  if (hint) hint.classList.toggle('hidden', !(state.chromium.installed && state.chromium.runCheckFailed));
+}
+
+function fillChromiumVersionSelect(versions, locked) {
+  const select = document.getElementById('browser-version');
+  const customInput = document.getElementById('browser-custom-version');
+  const previous = select.value;
+  const previousCustom = customInput.value;
+  select.innerHTML = '';
+  for (const v of versions) {
+    const opt = document.createElement('option');
+    opt.value = v.version;
+    opt.textContent = v.label ? `${v.version}（${v.label}）` : v.version;
+    select.appendChild(opt);
+  }
+  const customOpt = document.createElement('option');
+  customOpt.value = 'custom';
+  customOpt.textContent = '自定义版本…';
+  select.appendChild(customOpt);
+  if (previous && [...select.options].some(o => o.value === previous)) select.value = previous;
+  else if (previous === 'custom') { select.value = 'custom'; customInput.value = previousCustom; }
+  else if (state.chromium?.installed && state.chromium.version) {
+    const match = [...select.options].find(o => o.value === state.chromium.version);
+    if (match) select.value = match.value;
+    else { select.value = 'custom'; customInput.value = state.chromium.version; }
+  } else if (locked) select.value = locked;
+}
+
+async function loadChromiumVersions() {
+  const select = document.getElementById('browser-version');
+  const customRow = document.getElementById('browser-custom-row');
+  // Fill immediately with the locked version so the download button is
+  // usable even while the remote version list is still loading (it can be
+  // slow or blocked); the full list replaces it when it arrives.
+  const locked0 = state.chromium?.targetVersion || '';
+  fillChromiumVersionSelect(locked0 ? [{ version: locked0, label: '推荐（Playwright 锁定）' }] : [], locked0);
+  const sync = () => { customRow.classList.toggle('hidden', select.value !== 'custom'); updateDownloadButton(); };
+  select.onchange = sync;
+  sync();
+  try {
+    const data = await window.lfb.chromiumVersions();
+    if (data?.versions?.length) fillChromiumVersionSelect(data.versions, data.lockedVersion);
+  } catch { /* keep the locked version + custom input */ }
+  sync();
+}
+
 async function refreshChromiumStatus() {
   try {
     state.chromium = await window.lfb.chromiumStatus();
     const el = document.getElementById('browser-status');
-    const btn = document.getElementById('btn-download-browser');
     if (state.chromium.installed) {
       el.innerHTML = `<div><span class="pill ok">已安装</span></div><div class="sub" style="margin-top:6px">版本 ${esc(state.chromium.version || '')}</div>`;
-      btn.disabled = !state.chromium.updateAvailable;
-      btn.textContent = state.chromium.updateAvailable ? `更新至 ${state.chromium.targetVersion}` : 'Chromium 已安装';
     } else {
       el.innerHTML = `<div><span class="pill unchecked">未安装</span></div>`;
-      btn.disabled = false;
-      btn.textContent = '下载 Chromium';
     }
+    await loadChromiumVersions();
     updateBanner();
   } catch (e) { toast('检测内核状态失败：' + e.message, true); }
 }
@@ -785,6 +844,8 @@ function updateBanner() {
 }
 
 async function startChromiumDownload() {
+  const version = selectedChromiumVersion();
+  if (!/^\d+\.\d+\.\d+\.\d+$/.test(version)) { toast('请先选择或输入正确的版本号，例如 156.0.8078.4', true); return; }
   const btn = document.getElementById('btn-download-browser');
   const bar = document.getElementById('browser-progress');
   btn.disabled = true;
@@ -792,9 +853,9 @@ async function startChromiumDownload() {
   const fill = bar.querySelector('.bar');
   window.lfb.onChromiumProgress((p) => { fill.style.width = (p.pct || 0) + '%'; });
   try {
-    const r = await window.lfb.chromiumDownload();
+    const r = await window.lfb.chromiumDownloadVersion(version);
     if (!r.ok) throw new Error(r.error);
-    toast('Chromium 下载完成');
+    toast(r.runCheckFailed ? 'Chromium 下载完成（但直接运行检查未通过，见下方提示）' : 'Chromium 下载完成');
   } catch (e) { toast('下载失败：' + e.message, true); }
   bar.classList.add('hidden');
   await refreshChromiumStatus();

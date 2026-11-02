@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld('lfb', {
   readProxyClipboard: () => ipcRenderer.invoke('proxy-clipboard'),
   chromiumStatus: () => ipcRenderer.invoke('chromium-status'),
   chromiumDownload: () => ipcRenderer.invoke('chromium-download'),
+  chromiumVersions: () => ipcRenderer.invoke('chromium-versions'),
+  chromiumDownloadVersion: (version) => ipcRenderer.invoke('chromium-download-version', version),
   onChromiumProgress: (cb) => ipcRenderer.on('chromium-download-progress', (_e, p) => cb(p)),
   openDataDir: () => ipcRenderer.invoke('open-data-dir'),
 });
