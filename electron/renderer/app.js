@@ -816,22 +816,6 @@ document.getElementById('btn-save-proxy-route').onclick = async () => {
     toast('代理连接设置已保存');
   } catch (e) { toast(e.message, true); }
 };
-document.getElementById('btn-check-update').onclick = async () => {
-  const status = document.getElementById('update-status');
-  status.textContent = '正在检查…';
-  try {
-    const info = await window.lfb.checkUpdate();
-    status.textContent = info.available ? `发现新版本 ${info.latest}（当前 ${info.current}）` : `已是最新版本 ${info.current}`;
-    document.getElementById('btn-install-update').classList.toggle('hidden', !info.available);
-  } catch (e) { status.textContent = '检查失败'; toast(e.message, true); }
-};
-document.getElementById('btn-install-update').onclick = async () => {
-  const button = document.getElementById('btn-install-update');
-  button.disabled = true;
-  document.getElementById('update-status').textContent = '正在下载并安装…';
-  try { await window.lfb.installUpdate(); }
-  catch (e) { button.disabled = false; document.getElementById('update-status').textContent = '安装失败'; toast(e.message, true); }
-};
 document.getElementById('btn-banner-download').onclick = () => { showPage('settings'); startChromiumDownload(); };
 document.getElementById('btn-token-show').onclick = (e) => {
   const i = document.getElementById('set-api-token');

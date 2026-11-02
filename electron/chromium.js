@@ -69,6 +69,19 @@ function findExecutable(root) {
   }
   return null;
 }
+// Windows has no /usr/bin/unzip: use the built-in PowerShell Expand-Archive
+// (Windows 10+). Single quotes in paths are doubled for PowerShell literals.
+async function extractZip(zip, dest) {
+  if (process.platform === 'win32') {
+    const lit = s => `'${String(s).replace(/'/g, "''")}'`;
+    await exec('powershell', ['-NoProfile', '-NonInteractive', '-Command',
+      `Expand-Archive -LiteralPath ${lit(zip)} -DestinationPath ${lit(dest)} -Force`],
+      { timeout: 600000 });
+    return;
+  }
+  await exec('/usr/bin/unzip', ['-q', zip, '-d', dest], { timeout: 600000 });
+}
+
 async function install(dir, onProgress) {
   const status = await chromiumStatus(dir);
   if (status.installed && !status.updateAvailable) return status.executable;
@@ -78,7 +91,7 @@ async function install(dir, onProgress) {
   try {
     const zip = path.join(tmp, 'chromium.zip');
     await downloadFile(downloadUrl(), zip, onProgress);
-    await exec('/usr/bin/unzip', ['-q', zip, '-d', staging], { timeout: 600000 });
+    await extractZip(zip, staging);
     const executable = findExecutable(staging);
     if (!executable) throw new Error('安装包中没有 Chromium');
     // Playwright's CfT archive may omit bundle resource seals. Do not repair

@@ -11,7 +11,6 @@ const fs = require('fs');
 
 const { startBackend, DATA_DIR } = require('../src/server');
 const { chromiumStatus, downloadChromium, executableMarker } = require('./chromium');
-const { checkUpdate, installUpdate } = require('./updater');
 
 let backend = null;
 let mainWindow = null;
@@ -125,5 +124,3 @@ handle('proxy-clipboard', async () => {
   try { return { ok: true, proxy: require('../src/proxyparse').parseProxyLine(await clipboard.readText()) }; }
   catch { return { ok: false }; }
 });
-handle('update-check', () => checkUpdate());
-handle('update-install', () => installUpdate());

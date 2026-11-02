@@ -5,6 +5,17 @@ const { proxyURL, validateProxy } = require('./proxyconfig');
 const { SocksForwarder } = require('./socksfwd');
 const quote = value => '"' + String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r') + '"';
 
+// Windows has no /usr/bin/curl: use the curl.exe that ships with Windows 10+
+// (resolved through PATH). On macOS/Linux keep the absolute path so the
+// original restricted environment is unchanged. child.kill() without a
+// signal is used because SIGKILL does not exist on Windows.
+function curlCommand() { return process.platform === 'win32' ? 'curl' : '/usr/bin/curl'; }
+function curlEnv() {
+  return process.platform === 'win32'
+    ? process.env
+    : { PATH: '/usr/bin:/bin', LANG: 'C', HOME: process.env.HOME };
+}
+
 function curl(proxy, url, timeoutMs = 12000) {
   // -q disables ~/.curlrc. Empty noproxy prevents NO_PROXY from silently
   // bypassing the selected proxy. Secrets go over stdin, never argv/errors.
@@ -12,14 +23,14 @@ function curl(proxy, url, timeoutMs = 12000) {
     'connect-timeout = 8', 'noproxy = ""', `proxy = ${quote(proxyURL(proxy, true))}`,
     `url = ${quote(url)}`, ...(proxy.username || proxy.password ? [`proxy-user = ${quote(`${proxy.username || ''}:${proxy.password || ''}`)}`] : [])].join('\n') + '\n';
   return new Promise((resolve, reject) => {
-    const child = spawn('/usr/bin/curl', ['-q', '--config', '-'], {
-      env: { PATH: '/usr/bin:/bin', LANG: 'C', HOME: process.env.HOME }, stdio: ['pipe', 'pipe', 'ignore'],
+    const child = spawn(curlCommand(), ['-q', '--config', '-'], {
+      env: curlEnv(), stdio: ['pipe', 'pipe', 'ignore'],
     });
     let output = '', tooLarge = false;
-    const timer = setTimeout(() => child.kill('SIGKILL'), timeoutMs + 1000);
+    const timer = setTimeout(() => child.kill(), timeoutMs + 1000);
     child.stdout.on('data', chunk => {
       output += chunk.toString();
-      if (output.length > 256 * 1024) { tooLarge = true; child.kill('SIGKILL'); }
+      if (output.length > 256 * 1024) { tooLarge = true; child.kill(); }
     });
     child.stdin.on('error', () => {});
     child.once('error', () => { clearTimeout(timer); reject(new Error('无法启动系统 curl')); });

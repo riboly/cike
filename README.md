@@ -6,6 +6,18 @@
 
 <p align="center">本地多环境浏览器 · 独立会话 · 代理管理 · 自动化 API</p>
 
+## Windows 适配版（本 fork）
+
+本分支基于上游 chainfix/cike 改动，目标是在 Windows x64 上完整可用，与上游 macOS 正式版的区别如下：
+
+- 代理检测不再硬编码 `/usr/bin/curl`，Windows 上改用系统自带的 `curl.exe`（PATH 解析）；macOS/Linux 保持原有绝对路径与受限环境不变。
+- 设置页下载 Chromium 内核不再硬编码 `/usr/bin/unzip`，Windows 上改用 PowerShell `Expand-Archive` 解压。
+- 已移除在线更新（原实现只支持 macOS DMG / `hdiutil` / `/Applications`），设置页不再提供检查/安装更新；新版请从本仓库的 Actions 产物手动下载覆盖。
+- 打包：`npm run pack:win64`（electron-packager，`win32-x64`，图标 `electron/assets/icon.ico`），云编译见 `.github/workflows/build-windows.yml`，产物为 `CIKE-windows-x64.zip`，解压后直接运行 `CIKE.exe`。`.ico` 不入库：云编译会先跑 `scripts/make-win-icon.py` 从 `icon.png` 生成，本地打包前若无 `icon.ico` 也先跑一次该脚本（需 `pip install pillow`）。
+- 每环境独立应用图标是 macOS 专属功能，在 Windows 上自动跳过，不影响打开环境。
+- 数据目录仍为用户主目录下的 `.local-fingerprint-browser`（Windows 上即 `%USERPROFILE%\.local-fingerprint-browser`），Chromium 内核与环境数据与 mac 版结构相同。
+- 上游作者已声明暂不合并 Windows 改动，本分支不代表上游正式发布，使用前请自行在 Windows 上验证代理、内核下载与环境启动。
+
 ## Windows 版本说明
 
 当前正式发布仅提供 Apple 芯片版 macOS 安装包。维护者目前没有可用于完整测试的 Windows 设备，因此暂不合并和发布未经实际验证的 Windows 构建，避免提供无法确认能否安装、启动和更新的版本。
