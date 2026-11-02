@@ -1,4 +1,5 @@
 'use strict';
+const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -69,8 +70,24 @@ function findExecutable(root) {
   }
   return null;
 }
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+// Windows file locks (antivirus / indexer scanning freshly extracted files)
+// make directory removal flaky right after extraction: retry it instead of
+// letting one locked file fail the whole install, and never let a cleanup
+// error replace the real install error.
+async function removeWithRetry(target, attempts = 6) {
+  for (let i = 0; i < attempts; i++) {
+    try { fs.rmSync(target, { recursive: true, force: true }); return true; }
+    catch { if (i === attempts - 1) return false; await sleep(250); }
+  }
+  return false;
+}
+
 // Windows has no /usr/bin/unzip: use the built-in PowerShell Expand-Archive
 // (Windows 10+). Single quotes in paths are doubled for PowerShell literals.
+// dest must not be pre-created on Windows: Expand-Archive creates it, and
+// creating it first (mkdtemp) is what used to make the later rename/cleanup
+// hit EPERM on locked files.
 async function extractZip(zip, dest) {
   if (process.platform === 'win32') {
     const lit = s => `'${String(s).replace(/'/g, "''")}'`;
@@ -86,29 +103,53 @@ async function install(dir, onProgress) {
   const status = await chromiumStatus(dir);
   if (status.installed && !status.updateAvailable) return status.executable;
   privateDirectory(browserRoot(dir));
+  // Best-effort cleanup of leftovers from earlier failed installs (the old
+  // .install-* staging dirs). A locked leftover must not block a new install.
+  try {
+    for (const entry of fs.readdirSync(browserRoot(dir))) {
+      if (entry.startsWith('.install-')) await removeWithRetry(path.join(browserRoot(dir), entry));
+    }
+  } catch { /* ignore: a fresh install does not depend on this */ }
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cike-chromium-'));
-  const staging = fs.mkdtempSync(path.join(browserRoot(dir), '.install-'));
+  let destination = null;
   try {
     const zip = path.join(tmp, 'chromium.zip');
     await downloadFile(downloadUrl(), zip, onProgress);
-    await extractZip(zip, staging);
-    const executable = findExecutable(staging);
+    // Extract straight into the final directory instead of staging + rename:
+    // renaming a just-extracted tree on Windows is exactly what failed with
+    // EPERM when antivirus/indexer still held a file, and the old finally
+    // cleanup then replaced the real error with an EPERM on the staging dir.
+    // Old kernels stay usable because the marker is only rewritten on success.
+    const version = chromiumEntry().browserVersion;
+    do { destination = path.join(browserRoot(dir), `${version}-${crypto.randomBytes(3).toString('hex')}`); }
+    while (fs.existsSync(destination));
+    await extractZip(zip, destination);
+    const executable = findExecutable(destination);
     if (!executable) throw new Error('安装包中没有 Chromium');
     // Playwright's CfT archive may omit bundle resource seals. Do not repair
     // that by re-signing locally or claim Developer ID validation: transport
     // trust is HTTPS to the configured CDN, followed by a version check.
-    const { stdout } = await exec(executable, ['--version'], { timeout: 10000 });
-    if (!stdout.includes(chromiumEntry().browserVersion)) throw new Error('下载的内核版本不匹配');
-    // Keep the downloaded bundle unchanged, including its icon. Old
-    // kernels remain available until the new version is fully verified.
-    const destination = path.join(browserRoot(dir), `${chromiumEntry().browserVersion}-${path.basename(staging).slice(9)}`);
-    const relative = path.relative(staging, executable);
-    fs.renameSync(staging, destination);
-    const final = path.join(destination, relative);
+    // The version check itself can hit a still-scanning executable on
+    // Windows, so retry it briefly before giving up.
+    let stdout;
+    let lastError = null;
+    for (let i = 0; i < 3; i++) {
+      try { ({ stdout } = await exec(executable, ['--version'], { timeout: 10000 })); break; }
+      catch (error) { lastError = error; await sleep(500); }
+    }
+    if (stdout === undefined) throw lastError;
+    if (!stdout.includes(version)) throw new Error('下载的内核版本不匹配');
+    // Keep the downloaded bundle unchanged, including its icon.
+    const final = path.join(destination, path.relative(destination, executable));
     writePrivate(executableMarker(dir), final + '\n');
     onProgress?.({ done: 1, total: 1, pct: 100 });
     return final;
-  } finally { fs.rmSync(tmp, { recursive: true, force: true }); fs.rmSync(staging, { recursive: true, force: true }); }
+  } catch (error) {
+    if (destination) await removeWithRetry(destination);
+    throw error;
+  } finally {
+    try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* tmp cleanup must not mask the install error */ }
+  }
 }
 async function downloadChromium(dir, onProgress) {
   if (inProgress.has(dir)) return inProgress.get(dir);

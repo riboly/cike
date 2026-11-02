@@ -11,7 +11,8 @@
 本分支基于上游 chainfix/cike 改动，目标是在 Windows x64 上完整可用，与上游 macOS 正式版的区别如下：
 
 - 代理检测不再硬编码 `/usr/bin/curl`，Windows 上改用系统自带的 `curl.exe`（PATH 解析）；macOS/Linux 保持原有绝对路径与受限环境不变。
-- 设置页下载 Chromium 内核不再硬编码 `/usr/bin/unzip`，Windows 上改用 PowerShell `Expand-Archive` 解压。
+- 设置页下载 Chromium 内核不再硬编码 `/usr/bin/unzip`，Windows 上改用 PowerShell `Expand-Archive` 解压；且不再经过暂存目录重命名（旧流程在杀毒/索引锁定刚解压的文件时报 `EPERM`，清理失败还会掩盖原始错误），改为直接解压到最终目录、失败清理带重试且不掩盖原始错误，旧版残留的 `.install-*` 目录会在下次下载时顺带清理。
+- 主窗口菜单已全部中文化（文件 / 编辑 / 视图 / 窗口 / 帮助，含各子菜单），不再是默认的英文 File / Edit / View / Window。
 - 已移除在线更新（原实现只支持 macOS DMG / `hdiutil` / `/Applications`），设置页不再提供检查/安装更新；新版请从本仓库的 Actions 产物手动下载覆盖。
 - 打包：`npm run pack:win64`（electron-packager，`win32-x64`，图标 `electron/assets/icon.ico`），云编译见 `.github/workflows/build-windows.yml`，产物为 `CIKE-windows-x64.zip`，解压后直接运行 `CIKE.exe`。`.ico` 不入库：云编译会先跑 `scripts/make-win-icon.py` 从 `icon.png` 生成，本地打包前若无 `icon.ico` 也先跑一次该脚本（需 `pip install pillow`）。
 - 每环境独立应用图标是 macOS 专属功能，在 Windows 上自动跳过，不影响打开环境。

@@ -4,7 +4,7 @@
  * Main process starts the local backend (Koa API + profile/browser manager)
  * and hosts the management UI, which talks to the same Local API over HTTP.
  */
-const { app, BrowserWindow, ipcMain, shell, session, safeStorage, dialog, clipboard } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, session, safeStorage, dialog, clipboard, Menu } = require('electron');
 const { pathToFileURL } = require('url');
 const path = require('path');
 const fs = require('fs');
@@ -35,6 +35,94 @@ function applyChromiumEnv() {
   } catch { /* not downloaded yet */ }
 }
 
+// The stock Electron menu is English (File / Edit / View / Window).
+// Build the whole menu in Chinese instead, with labels overriding the
+// roles so the actions stay native but the text is always Chinese.
+function showAbout() {
+  dialog.showMessageBox(mainWindow, {
+    type: 'info',
+    title: '关于 CIKE',
+    message: `CIKE ${app.getVersion()}`,
+    detail: '本地多环境浏览器 · 独立会话 · 代理管理 · 自动化 API\nWindows 适配版（基于 chainfix/cike 的 fork）',
+    buttons: ['确定'],
+  }).catch(() => {});
+}
+
+function buildApplicationMenu() {
+  const isMac = process.platform === 'darwin';
+  const template = [];
+  if (isMac) {
+    template.push({
+      label: 'CIKE',
+      submenu: [
+        { label: '关于 CIKE', click: showAbout },
+        { type: 'separator' },
+        { label: '服务', role: 'services' },
+        { type: 'separator' },
+        { label: '隐藏 CIKE', role: 'hide' },
+        { label: '隐藏其他', role: 'hideOthers' },
+        { label: '显示全部', role: 'unhide' },
+        { type: 'separator' },
+        { label: '退出 CIKE', role: 'quit' },
+      ],
+    });
+  }
+  template.push(
+    {
+      label: '文件',
+      submenu: [
+        { label: '打开数据目录', click: () => { if (backend) shell.openPath(backend.dataDir); } },
+        { type: 'separator' },
+        ...(isMac ? [] : [{ label: '退出', role: 'quit', accelerator: 'Ctrl+Q' }]),
+      ],
+    },
+    {
+      label: '编辑',
+      submenu: [
+        { label: '撤销', role: 'undo' },
+        { label: '重做', role: 'redo' },
+        { type: 'separator' },
+        { label: '剪切', role: 'cut' },
+        { label: '复制', role: 'copy' },
+        { label: '粘贴', role: 'paste' },
+        { label: '删除', role: 'delete' },
+        { type: 'separator' },
+        { label: '全选', role: 'selectAll' },
+      ],
+    },
+    {
+      label: '视图',
+      submenu: [
+        { label: '重新加载', role: 'reload' },
+        { label: '强制重新加载', role: 'forceReload' },
+        { label: '切换开发者工具', role: 'toggleDevTools' },
+        { type: 'separator' },
+        { label: '实际大小', role: 'resetZoom' },
+        { label: '放大', role: 'zoomIn' },
+        { label: '缩小', role: 'zoomOut' },
+        { type: 'separator' },
+        { label: '全屏', role: 'toggleFullscreen' },
+      ],
+    },
+    {
+      label: '窗口',
+      submenu: [
+        { label: '最小化', role: 'minimize' },
+        ...(isMac ? [{ label: '缩放', role: 'zoom' }, { label: '前置全部窗口', role: 'front' }] : []),
+        { label: '关闭', role: 'close' },
+      ],
+    },
+    {
+      label: '帮助',
+      submenu: [
+        { label: '关于 CIKE', click: showAbout },
+        { label: '前往 GitHub 仓库', click: () => shell.openExternal('https://github.com/riboly/cike') },
+      ],
+    },
+  );
+  return Menu.buildFromTemplate(template);
+}
+
 async function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1240,
@@ -49,6 +137,8 @@ async function createWindow() {
       sandbox: true,
     },
   });
+
+  Menu.setApplicationMenu(buildApplicationMenu());
 
   mainWindow.webContents.on('will-navigate', (event, url) => { if (url !== uiURL) event.preventDefault(); });
   mainWindow.webContents.on('will-attach-webview', event => event.preventDefault());
